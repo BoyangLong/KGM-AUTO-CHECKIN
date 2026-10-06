@@ -7,11 +7,11 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
-# ── 根目录依赖（qrcode、node-cron）──
+# ── 根目录依赖（express、qrcode、node-cron）──
 # 注意：--ignore-scripts 跳过根 package.json 的 install 生命周期脚本
 # （该脚本会执行 cd api && npm ci 全量安装，Dockerfile 中改为下方显式按需安装）
-COPY package.json ./
-RUN npm install --omit=dev --ignore-scripts \
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts \
     && npm cache clean --force
 
 # ── API 服务生产依赖（先只拷贝清单文件，充分利用构建缓存）──
@@ -25,6 +25,7 @@ RUN cd api \
 COPY main.js sent.js phoneLogin.js qrcodeLogin.js scheduler.js ./
 COPY utils ./utils
 COPY api ./api
+COPY webui ./webui
 
 # ── 运行时目录与权限 ──
 # /app/data：挂载卷（userinfo.json 凭据、二维码输出）
@@ -40,6 +41,9 @@ ENV USERINFO_FILE=/app/data/userinfo.json \
     QR_DIR=/app/data/qr \
     QR_KEYS_FILE=/app/data/qrkeys.json
 
-# API 服务仅容器内部使用（127.0.0.1:3000），无需对外暴露端口
+# 容器内端口规划（无需对外全部暴露）：
+#   3000 WebUI 控制台（compose 按需映射）
+#   3010 登录用常驻 API 服务（webui/server.js 懒启动）
+#   3020 签到子进程专用 API 服务（每次签到临时拉起）
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["node", "scheduler.js"]
+CMD ["node", "webui/server.js"]

@@ -4,7 +4,7 @@ import path from 'node:path'
 import { close_api, delay, send, startService, waitForApi } from "./utils/utils.js";
 import { printGreen, printMagenta, printRed, printYellow } from "./utils/colorOut.js";
 import { summarizeResponse } from "./utils/safeLog.js";
-import { upsertUser, saveUserinfo } from "./utils/userinfo.js";
+import { upsertUser, saveUserinfo, parseUserinfoJson } from "./utils/userinfo.js";
 
 const require = createRequire(import.meta.url)
 // 优先从常规 node_modules 解析（本地/全局安装场景），失败再回退到 Actions 构建产物中的 api/node_modules 硬编码路径
@@ -242,7 +242,7 @@ async function waitMode() {
   const { number, keys } = parsed
   const USERINFO = process.env.USERINFO
   const APPEND_USER = process.env.APPEND_USER
-  const userinfo = (USERINFO && APPEND_USER == "是") ? JSON.parse(USERINFO) : []
+  const userinfo = (USERINFO && APPEND_USER == "是") ? (parseUserinfoJson(USERINFO) || []) : []
 
   const results = []
 

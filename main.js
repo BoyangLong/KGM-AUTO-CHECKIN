@@ -3,17 +3,17 @@ import { hasSecretWriteToken, setRepoSecret } from "./utils/githubSecrets.js";
 import { maskDisplayName, maskIdentifier, sanitizeForLog, summarizeResponse } from "./utils/safeLog.js";
 import { sendNotify } from "./utils/notify.js";
 import { close_api, delay, send, startService, waitForApi } from "./utils/utils.js";
-import { writeUserinfoFile } from "./utils/userinfo.js";
+import { writeUserinfoFile, parseUserinfoJson } from "./utils/userinfo.js";
 import { beijingDateStr, isBeijingSunday } from "./utils/date.js";
 
 async function main() {
 
   const USERINFO = process.env.USERINFO
   let needRefresh = false
-  if (!USERINFO) {
-    throw new Error("未配置")
+  const userinfo = parseUserinfoJson(USERINFO)
+  if (!userinfo) {
+    throw new Error("未配置或 USERINFO 格式错误（应为 [{\"userid\":\"...\",\"token\":\"...\"}]）")
   }
-  const userinfo = JSON.parse(USERINFO)
 
   // 启动服务并等待就绪（避免冷启动竞态导致首个请求失败）
   const api = startService()

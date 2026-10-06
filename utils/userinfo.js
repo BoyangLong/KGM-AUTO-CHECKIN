@@ -10,6 +10,22 @@ import { hasSecretWriteToken, setRepoSecret } from './githubSecrets.js'
 import { maskIdentifier, sanitizeForLog, shouldPrintSensitiveValue } from './safeLog.js'
 
 /**
+ * 解析 USERINFO JSON 文本。
+ * 兼容 UTF-8 BOM（Windows 记事本保存的文件自带 BOM，会导致 JSON.parse 直接失败）与首尾空白。
+ * @param {string} text
+ * @returns {Array|null} 解析成功返回数组；为空/格式错误/非数组时返回 null
+ */
+function parseUserinfoJson(text) {
+  if (!text) return null
+  try {
+    const parsed = JSON.parse(String(text).replace(/^\uFEFF/, '').trim())
+    return Array.isArray(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+/**
  * 将登录用户信息更新或追加到 userinfo 数组中
  * @param {Array} userinfo - 用户信息数组
  * @param {{ userid: string, token: string }} loginUser - 新登录的用户
@@ -100,4 +116,4 @@ function printUserinfoFallback(userinfoJSON) {
   }
 }
 
-export { upsertUser, saveUserinfo, writeUserinfoFile }
+export { upsertUser, saveUserinfo, writeUserinfoFile, parseUserinfoJson }
