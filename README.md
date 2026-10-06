@@ -134,7 +134,7 @@ docker compose pull && docker compose up -d --build         # 拉取新代码后
 
 <details>
 
-<summary>⚠️部署教程(点击展开)⚠️</summary>
+<summary>⚠️Github Actions部署教程(点击展开)⚠️</summary>
 
 1. Fork 本仓库
 
