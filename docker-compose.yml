@@ -1,0 +1,55 @@
+# kgcheckin —— 酷狗概念版自动签到（Docker 部署）
+#
+# 常用命令：
+#   docker compose up -d --build      构建并后台启动定时签到
+#   docker compose logs -f            查看签到日志
+#   docker compose down               停止
+#
+# 手动操作（一次性任务，跑完自动退出）：
+#   docker compose run --rm kgcheckin node scheduler.js once     立即签到一次
+#   docker compose run --rm kgcheckin node qrcodeLogin.js gen    生成登录二维码（扫 data/qr/login.html）
+#   docker compose run --rm kgcheckin node qrcodeLogin.js wait   等待扫码并保存凭据
+#   docker compose run --rm -e PHONE=138xxxx kgcheckin npm run sent       发送短信验证码
+#   docker compose run --rm -e PHONE=138xxxx -e CODE=123456 kgcheckin npm run phoneLogin
+services:
+  kgcheckin:
+    build: .
+    image: kgcheckin:latest
+    container_name: kgcheckin
+    restart: unless-stopped
+    environment:
+      # ── 调度 ──
+      # 注意：不要把 TZ 设为 Asia/Shanghai 之外的"迷惑值"；
+      # 签到的日期/星期计算已与容器时区无关，统一按北京时间处理。
+      CRON_SCHEDULE: "10 1 * * *"      # 每天北京时间 01:10 签到
+      CRON_TIMEZONE: Asia/Shanghai     # 调度器使用的时区
+      RUN_ON_STARTUP: "false"          # true：容器启动后立即执行一次签到
+      # ── 凭据（二选一）──
+      # 方式一（推荐）：先跑一次二维码/手机号登录，凭据自动保存到挂载卷 data/userinfo.json
+      # 方式二：直接贴入已有的 USERINFO（与 GitHub Actions 的 Secret 格式一致）
+      # USERINFO: '[{"userid":"123456","token":"xxxxxxxx"}]'
+      # ── 通知渠道（全部可选，与 Actions 的 Secret 同名；按需取消注释）──
+      # WECOM_BOT_KEY: ""
+      # DINGTALK_BOT_KEY: ""
+      # DINGTALK_SECRET: ""
+      # FEISHU_BOT_KEY: ""
+      # YUNHU_BOT_KEY: ""
+      # SERVERCHAN_SENDKEY: ""
+      # PUSHPLUS_TOKEN: ""
+      # PUSHPLUS_TOPIC: ""
+      # TG_BOT_TOKEN: ""
+      # TG_CHAT_ID: ""
+      # BARK_KEY: ""
+      # BARK_GROUP: ""
+      # DISCORD_WEBHOOK: ""
+      # MAIL_HOST: ""
+      # MAIL_PORT: ""
+      # MAIL_USER: ""
+      # MAIL_PASS: ""
+      # MAIL_TO: ""
+      # ── 其他（一般无需修改）──
+      # PAT: ""                        # 仅当仍需把 token 刷新同步回 GitHub Secret 时才需要
+      # GITHUB_REPOSITORY: ""          # 同上，需与 PAT 配合使用
+      # APPEND_USER: "是"              # 追加登录账号（保留已登录账号）时设置为 "是"
+    volumes:
+      - ./data:/app/data               # 凭据 userinfo.json + 登录二维码（token 周刷新会自动写回此文件）

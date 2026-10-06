@@ -1,7 +1,12 @@
 # 酷狗概念版签到
 【对齐上游 KuGouMusicApi v1.6.2】
 
-GitHub Actions 实现 `酷狗概念VIP` 自动签到，每天领取总计 `两天酷狗概念VIP`
+自动领取 `酷狗概念VIP`，每天领取总计 `两天酷狗概念VIP`
+
+支持两种部署方式：
+
+- **Docker 部署（推荐）**：部署到自己的服务器 / NAS，容器内置定时调度，无需 GitHub Actions（见下方 [Docker 部署](#docker-部署)）
+- **GitHub Actions 部署**：Fork 本仓库白嫖 Actions，每天定时签到（见下方折叠的部署教程）
 
 登录后即可使用，目前提供二维码登录(推荐)和手机号登录(一个手机号绑定多个账号无法登录，见 [多账号登录问题](https://github.com/MakcRe/KuGouMusicApi/issues/51))
 
@@ -38,6 +43,94 @@ GitHub Actions 实现 `酷狗概念VIP` 自动签到，每天领取总计 `两�
 > **在仓库`Settings`设置`PAT Secret`，再执行登录 确保`Secrets and variables` - `Actions`中成功写入`USERINFO`再执行签到**
 
 $${\color{red}避免将PAT秘钥复制于Windows记事本中，可能存在的字号字体问题会导致秘钥中所有下划线消失导致秘钥出错}$$
+
+## Docker 部署
+
+在任意一台服务器 / NAS（能访问外网即可）上用 Docker 常驻运行，容器内置定时调度，**每天北京时间 01:10 自动签到**，不依赖 GitHub Actions 与 GitHub Secret。
+
+### 1. 获取代码
+
+```bash
+git clone <本仓库地址> kgcheckin
+cd kgcheckin
+```
+
+### 2. 构建并启动
+
+```bash
+docker compose up -d --build
+docker compose logs -f        # 查看日志，Ctrl+C 退出（容器继续运行）
+```
+
+### 3. 登录获取凭据（两种方式任选其一）
+
+**方式一：二维码登录（推荐）**
+
+```bash
+# 第 1 步：生成登录二维码
+docker compose run --rm kgcheckin node qrcodeLogin.js gen
+# 第 2 步：用浏览器打开 data/qr/login.html，使用「酷狗音乐 APP」扫码并确认（二维码有效期约 2 分钟）
+# 第 3 步：等待扫码结果并保存凭据
+docker compose run --rm kgcheckin node qrcodeLogin.js wait
+```
+
+看到「登录成功」后，凭据已自动保存到 `data/userinfo.json`。
+
+> 多账号追加：重新执行上面 3 步即可；`wait` 一步加参数 `-e APPEND_USER=是`，例如
+> `docker compose run --rm -e APPEND_USER=是 kgcheckin node qrcodeLogin.js wait`（追加保留已有账号，仅更新/新增）
+
+**方式二：手机号登录**
+
+```bash
+# 发送验证码
+docker compose run --rm -e PHONE=138xxxxxxxx kgcheckin npm run sent
+# 提交验证码完成登录
+docker compose run --rm -e PHONE=138xxxxxxxx -e CODE=123456 kgcheckin npm run phoneLogin
+```
+
+### 4. 完成
+
+登录完成后容器即按计划自动签到，无需其他配置。也可以手动验证：
+
+```bash
+docker compose run --rm kgcheckin node scheduler.js once   # 立即执行一次签到
+```
+
+### 4.1 已有 USERINFO？（从 Actions 迁移）
+
+如果之前在 GitHub Actions 使用过，可直接把 Secret `USERINFO` 的内容贴到 `docker-compose.yml` 的 `USERINFO` 环境变量中，跳过第 3 步登录。
+
+### 配置说明（docker-compose.yml `environment`）
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `CRON_SCHEDULE` | `10 1 * * *` | 签到计划任务（cron 表达式），默认每天北京时间 01:10 |
+| `CRON_TIMEZONE` | `Asia/Shanghai` | 调度器使用的时区 |
+| `RUN_ON_STARTUP` | `false` | 设为 `true` 时容器启动后立即执行一次签到 |
+| `USERINFO` | - | 登录凭据（JSON 数组），与 Actions 的 Secret 格式一致；与凭据文件二选一 |
+| `USERINFO_FILE` | `/app/data/userinfo.json` | 凭据文件路径（位于挂载卷内，勿改）；入口脚本会自动读取并作为 `USERINFO` 注入 |
+| 通知渠道变量 | - | `WECOM_BOT_KEY`、`DINGTALK_BOT_KEY`、`FEISHU_BOT_KEY`、`TG_BOT_TOKEN` 等，与下文 Actions 通知 Secret 同名，按需在 compose 中配置 |
+| `PAT` + `GITHUB_REPOSITORY` | - | 可选。仅当还想把每周刷新的 token 同步回 GitHub 仓库 Secret 时才需要 |
+
+### 数据与安全
+
+- 挂载卷 `./data/` 存放登录凭据（`userinfo.json`）和登录二维码，**请妥善保管，不要提交到仓库**（已加入 `.gitignore`）
+- 每周日签到时候酷狗 token 会自动刷新并**写回 `data/userinfo.json`**，凭据长期有效，无需手动维护
+- 日期/星期计算固定按北京时间处理，与容器 `TZ` 无关；调度时区由 `CRON_TIMEZONE` 控制
+- 首次 `up` 后若报权限错误，执行 `sudo chown -R 1000:1000 ./data`（容器以 uid 1000 运行）后重启
+
+### 常用命令速查
+
+```bash
+docker compose up -d --build                                # 构建/更新并启动
+docker compose logs -f --tail 100                           # 跟踪日志
+docker compose down                                         # 停止并删除容器
+docker compose run --rm kgcheckin node scheduler.js once    # 手动立即签到
+docker compose run --rm kgcheckin node scheduler.js next    # 预览接下来 3 次签到时间
+docker compose run --rm kgcheckin node qrcodeLogin.js gen   # 生成登录二维码
+docker compose run --rm kgcheckin node qrcodeLogin.js wait  # 等待扫码保存凭据
+docker compose pull && docker compose up -d --build         # 拉取新代码后更新
+```
 
 <details>
 

@@ -3,6 +3,8 @@ import { hasSecretWriteToken, setRepoSecret } from "./utils/githubSecrets.js";
 import { maskDisplayName, maskIdentifier, sanitizeForLog, summarizeResponse } from "./utils/safeLog.js";
 import { sendNotify } from "./utils/notify.js";
 import { close_api, delay, send, startService, waitForApi } from "./utils/utils.js";
+import { writeUserinfoFile } from "./utils/userinfo.js";
+import { beijingDateStr, isBeijingSunday } from "./utils/date.js";
 
 async function main() {
 
@@ -22,14 +24,9 @@ async function main() {
     throw e
   }
 
-  const today = new Date();
-  // 服务器时间比国内慢8小时
-  today.setTime(today.getTime() + 8 * 60 * 60 * 1000)
-  //日期
-  const DD = String(today.getDate()).padStart(2, '0'); // 获取日
-  const MM = String(today.getMonth() + 1).padStart(2, '0'); //获取月份，1 月为 0
-  const yyyy = today.getFullYear(); // 获取年份
-  const date = yyyy + '-' + MM + '-' + DD
+  // 日期/星期统一按北京时间计算（与运行环境时区无关，兼容 UTC 的 Actions 与任意时区的 Docker/本地）
+  const now = new Date()
+  const date = beijingDateStr(now)
 
   const errorMsg = {}
   // 通知结果收集
@@ -65,7 +62,7 @@ async function main() {
         printMagenta(`账号 ${safeNickname} 开始领取VIP...`)
 
         // 周日刷新token
-        if (today.getDay() === 0) {
+        if (isBeijingSunday(now)) {
           const refreshToken = await send(`/login/token?timestrap=${Date.now()}`, "POST", headers)
           if (refreshToken?.status == 1) {
             if (refreshToken?.data?.token !== user.token) {
@@ -161,11 +158,19 @@ async function main() {
     close_api(api)
   }
 
-  // 更新secret <USERINFO>（使用完整 userinfo 数组，保留所有用户包括过期账号）
+  // 刷新后的凭据持久化：Docker 部署写入 USERINFO_FILE 文件（挂载卷），
+  // Actions 部署写入 GitHub Secret <USERINFO>（使用完整 userinfo 数组，保留所有用户包括过期账号）
   let secretError = null
   if (needRefresh) {
-    if (hasSecretWriteToken()) {
-      const userinfoJSON = JSON.stringify(userinfo)
+    const userinfoJSON = JSON.stringify(userinfo)
+    // 优先写本地凭据文件（Docker 模式），写失败时降级走 PAT
+    let savedToFile = false
+    if (process.env.USERINFO_FILE) {
+      savedToFile = writeUserinfoFile(userinfoJSON)
+    }
+    if (savedToFile) {
+      printGreen("USERINFO 文件 token 刷新成功")
+    } else if (hasSecretWriteToken()) {
       try {
         setRepoSecret("USERINFO", userinfoJSON)
         printGreen("secret <USERINFO> token刷新成功")
@@ -216,4 +221,7 @@ async function main() {
 
 }
 
-main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1) })
+// 以 exitCode 标记结果、等事件循环自然排空后退出：
+// 避免 Windows 下 process.exit() 与子进程 stdio 管道清理竞态触发 libuv 断言崩溃；
+// api 子进程已被 close_api 终止，管道关闭后进程会正常退出。
+main().then(() => { process.exitCode = 0 }).catch(e => { console.error(e); process.exitCode = 1 })

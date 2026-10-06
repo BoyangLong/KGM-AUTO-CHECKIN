@@ -1,4 +1,8 @@
 import { spawn } from 'child_process'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const apiDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../api')
 
 /** 延时 */
 function delay(ms) {
@@ -33,7 +37,11 @@ async function waitForApi(base = 'http://127.0.0.1:3000', timeoutMs = 20000) {
 
 /** 启动 api 服务（detached 使其成为独立进程组，便于整组强杀） */
 function startService() {
-  const api = spawn('npm', ['run', 'apiService'], {
+  // 直接以 node 运行 api/app.js（与 npm run apiService → node app.js 等价）：
+  // 1. 兼容 Windows：新版 Node 禁止无 shell 直接 spawn npm.cmd（EINVAL）；
+  // 2. 少一层 npm 中间进程，close_api 强杀更干净（npm 不向子进程转发信号）。
+  const api = spawn(process.execPath, ['app.js'], {
+    cwd: apiDir,
     detached: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -50,14 +58,14 @@ function startService() {
 
 /**
  * 关闭 api 服务。
- * 关键修复：npm 不会把 SIGTERM 转发给它的子进程（真正的 Express 服务），
- * 仅 api.kill() 会导致 3000 端口一直被占 → 下一阶段 startService 报 EADDRINUSE。
- * 因此用 detached 进程组 + process.kill(-pid) 强杀整组。
+ * detached 使 api 服务运行在独立进程组：
+ * - Linux（Actions/Docker）：process.kill(-pid, 'SIGKILL') 强杀整组；
+ * - Windows：进程组不可用，降级为 api.kill() 直接结束服务进程。
  */
 function close_api(api) {
   if (!api || !api.pid) return
   try {
-    process.kill(-api.pid, 'SIGKILL') // 杀掉整个进程组（npm + Express）
+    process.kill(-api.pid, 'SIGKILL') // 杀掉整个进程组（Linux/macOS）
   } catch (e) {
     try { api.kill('SIGKILL') } catch (_) { /* 已退出 */ }
   }

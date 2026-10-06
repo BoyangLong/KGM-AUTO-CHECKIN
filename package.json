@@ -7,9 +7,12 @@
     "apiService": "cd api && npm run start",
     "phoneLogin": "node phoneLogin.js",
     "sent": "node sent.js",
-    "qrcodeLogin": "node qrcodeLogin.js"
+    "qrcodeLogin": "node qrcodeLogin.js",
+    "scheduler": "node scheduler.js",
+    "once": "node scheduler.js once"
   },
   "dependencies": {
+    "node-cron": "^3.0.3",
     "qrcode": "^1.5.3"
   }
 }

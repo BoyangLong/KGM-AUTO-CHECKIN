@@ -3,6 +3,8 @@ node_modules/
 # 运行时生成的临时文件
 qr/
 qrkeys.json
+# Docker 部署数据目录（含登录凭据，严禁提交）
+data/
 # 环境变量
 .env
 .env.*
